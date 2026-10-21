@@ -1,13 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mino Designs | Web and product design for consumer brands</title>
-<meta name="description" content="Mino Designs is a fractional web and product design partner for consumer founders. One senior designer, from first sketch to finished site.">
-<meta property="og:title" content="Mino Designs | Web and product design for consumer brands">
-<meta property="og:description" content="Your embedded design partner for consumer brands. Faster than hiring, sharper than an agency.">
-<meta property="og:type" content="website">
+<title>Mino Designs Editorial</title>
 <meta name="theme-color" content="#EFECEA">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -802,9 +793,15 @@ a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-v
 /* ===== v55: no separators in the logo marquee ===== */
 .track li + li::before { content: none !important; display: none !important; }
 .track ul { gap: clamp(56px, 8vw, 112px) !important; padding-inline: clamp(28px, 4vw, 56px) !important; }
+
+/* ===== v56: footer graphic = glyph matrix (vanilla port of GlyphMatrix) ===== */
+.wallpaper .endcard::before { display: none !important; }
+.wallpaper .endcard .foot-glyph { position: absolute; z-index: -1; pointer-events: none; top: 0; bottom: 0; left: calc(50% - 50vw); width: 100vw; height: 100%; display: block; }
+
+/* ===== ASCII hero: canvas takes the text colour, kept quiet behind the headline ===== */
+.ascii-bg { color: var(--fg); opacity: .7; }
+@media (max-width: 860px) { .ascii-bg { opacity: .55; } }
 </style>
-</head>
-<body>
 <script>document.documentElement.classList.add('is-loading');</script>
 <div class="loader" id="loader" aria-hidden="true"><canvas id="loader-rose"></canvas></div>
 <noscript><style>.loader{display:none}</style></noscript>
@@ -826,7 +823,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-v
 <main class="wrap" id="main" tabindex="-1">
 
   <header class="hero hero-v2" id="top">
-    <canvas class="ink" id="rose" aria-hidden="true"></canvas>
+    <canvas class="ink ascii-bg" id="ascii" aria-hidden="true"></canvas>
     <h1 class="hero-title">Your embedded design partner for <em>consumer brands</em></h1>
     <aside class="hero-side glass">
       <div class="side-item">
@@ -1029,6 +1026,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-v
 
   <div class="wallpaper">
   <div class="endcard dark">
+    <canvas class="foot-glyph" aria-hidden="true"></canvas>
   <section class="close" id="contact">
     <h2 data-reveal>Let's work <em>together</em></h2>
     <a class="btn" href="mailto:hello@minodesigns.com">Book an intro call</a>
@@ -1363,5 +1361,125 @@ a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-v
   if (skip && main) skip.addEventListener('click', function (e) { e.preventDefault(); main.focus({ preventScroll: true }); main.scrollIntoView(); });
 })();
 </script>
-</body>
-</html>
+<script>
+/* Glyph matrix behind the footer: a grid of faint glyphs that shift a few at a time.
+   Vanilla port of the GlyphMatrix React component (same props and drawing). */
+(function () {
+  var canvas = document.querySelector('.foot-glyph'); if (!canvas) return;
+  var ctx = canvas.getContext('2d'); if (!ctx) return;
+  var opts = { glyphs: '01.+*/<>=', cellSize: 14, mutationRate: 0.04, interval: 90, fadeBottom: 0.6, color: 'rgba(241, 236, 233, 0.45)' };
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // resolve the colour to RGBA once
+  var rgba = (function () {
+    var c = document.createElement('canvas'); c.width = c.height = 1; var x = c.getContext('2d');
+    x.fillStyle = '#6B7280'; x.fillStyle = opts.color; x.fillRect(0, 0, 1, 1);
+    var d = x.getImageData(0, 0, 1, 1).data; return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 };
+  })();
+  var cols = 0, rows = 0, cells = [], alphas = [], raf = 0, last = 0, running = false;
+  var pick = function () { return opts.glyphs[Math.floor(Math.random() * opts.glyphs.length)]; };
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.ceil(w / opts.cellSize); rows = Math.ceil(h / opts.cellSize);
+    var n = cols * rows; cells = new Array(n); alphas = new Array(n);
+    for (var i = 0; i < n; i++) { cells[i] = pick(); alphas[i] = 0.05 + Math.random() * 0.35; }
+  }
+  function draw() {
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = (opts.cellSize - 2) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textBaseline = 'top';
+    for (var y = 0; y < rows; y++) {
+      var fade = opts.fadeBottom > 0 ? 1 - (y / rows) * opts.fadeBottom : 1;
+      for (var x = 0; x < cols; x++) {
+        var i = y * cols + x;
+        ctx.fillStyle = 'rgba(' + rgba.r + ',' + rgba.g + ',' + rgba.b + ',' + (alphas[i] * fade * rgba.a) + ')';
+        ctx.fillText(cells[i], x * opts.cellSize, y * opts.cellSize);
+      }
+    }
+  }
+  function tick(t) {
+    if (!running) return;
+    if (t - last >= opts.interval) {
+      last = t;
+      var total = cols * rows, m = Math.max(1, Math.floor(total * opts.mutationRate));
+      for (var n = 0; n < m; n++) { var i = Math.floor(Math.random() * total); cells[i] = pick(); alphas[i] = 0.05 + Math.random() * 0.45; }
+      draw();
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  function start() { if (running || reduce) return; running = true; raf = requestAnimationFrame(tick); }
+  function stop() { running = false; cancelAnimationFrame(raf); }
+  resize(); draw();
+  new ResizeObserver(function () { resize(); draw(); }).observe(canvas);
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { es[0].isIntersecting ? start() : stop(); }).observe(canvas); else start();
+  document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); });
+})();
+</script>
+<script>
+/* ASCII field behind the hero: flowing value-noise drawn as characters that brighten near the pointer.
+   Vanilla port of the AsciiDitherMedia React component (mode "ascii", cellSize 14, cursorRadius 140). */
+(function () {
+  var canvas = document.getElementById('ascii'); if (!canvas) return;
+  var ctx = canvas.getContext('2d'); if (!ctx) return;
+  var hero = canvas.parentElement;
+  var RAMP = ' .:-=+*#%@', cellSize = 14, cursorRadius = 140;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fg = '', cols = 0, rows = 0, raf = 0, t = 0, running = false;
+  var cursor = { x: -1e4, y: -1e4, tx: -1e4, ty: -1e4 };
+  function noise(x, y, t) {
+    var v = Math.sin(x * 1.7 + t * 0.6) + Math.sin(y * 2.3 - t * 0.4) + Math.sin((x + y) * 1.1 + t * 0.25) + Math.sin(Math.hypot(x - 6, y - 4) * 1.9 - t * 0.7);
+    return v / 8 + 0.5;
+  }
+  // iridescent ink: pink, lilac and gold drift across the field (deeper on light grounds, softer on dark)
+  var PAL = { light: [[201, 120, 154], [146, 122, 196], [190, 150, 72]], dark: [[227, 158, 184], [181, 158, 219], [219, 184, 112]] }, pal = PAL.light;
+  function isDark() {
+    var r = document.documentElement.getAttribute('data-theme');
+    return r ? r === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function readTokens() { fg = getComputedStyle(canvas).color; pal = isDark() ? PAL.dark : PAL.light; }
+  function iris(p) {
+    var f = (p - Math.floor(p)) * 3, i = Math.floor(f), u = f - i; u = u * u * (3 - 2 * u);
+    var a = pal[i % 3], b = pal[(i + 1) % 3];
+    return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * u) + ',' + Math.round(a[1] + (b[1] - a[1]) * u) + ',' + Math.round(a[2] + (b[2] - a[2]) * u) + ')';
+  }
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2), r = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(r.width * dpr)); canvas.height = Math.max(1, Math.round(r.height * dpr));
+    cols = Math.ceil(r.width / cellSize); rows = Math.ceil(r.height / cellSize);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = (cellSize * 0.85) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  }
+  function draw() {
+    var r = canvas.getBoundingClientRect();
+    ctx.clearRect(0, 0, r.width, r.height); ctx.fillStyle = fg;
+    cursor.x += (cursor.tx - cursor.x) * 0.12; cursor.y += (cursor.ty - cursor.y) * 0.12;
+    var r2 = cursorRadius * cursorRadius;
+    for (var gy = 0; gy < rows; gy++) for (var gx = 0; gx < cols; gx++) {
+      var lum = Math.pow(noise(gx * 0.35 + t * 0.22, gy * 0.35, t), 1.7);
+      var px = gx * cellSize + cellSize / 2, py = gy * cellSize + cellSize / 2;
+      var dx = px - cursor.x, dy = py - cursor.y, d2 = dx * dx + dy * dy;
+      if (d2 < r2 * 4) lum = Math.min(1, lum + Math.exp(-d2 / r2) * 0.7);
+      var ch = RAMP[Math.floor(lum * (RAMP.length - 1))];
+      if (ch !== ' ') { ctx.fillStyle = iris(gx * 0.018 + gy * 0.024 + lum * 0.35 - t * 0.05); ctx.globalAlpha = 0.25 + lum * 0.75; ctx.fillText(ch, px, py); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function loop() { t += 0.028; draw(); if (running) raf = requestAnimationFrame(loop); }
+  function start() { if (running || reduced) return; running = true; raf = requestAnimationFrame(loop); }
+  function stop() { running = false; cancelAnimationFrame(raf); }
+  // the canvas sits behind the content, so listen on the whole hero
+  hero.addEventListener('pointermove', function (e) { var r = canvas.getBoundingClientRect(); cursor.tx = e.clientX - r.left; cursor.ty = e.clientY - r.top; }, { passive: true });
+  hero.addEventListener('pointerleave', function () { cursor.tx = cursor.ty = -1e4; });
+  var timer = null;
+  window.addEventListener('resize', function () { clearTimeout(timer); timer = setTimeout(function () { resize(); if (reduced) draw(); }, 150); });
+  // re-read the ink if the theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { readTokens(); if (reduced) draw(); });
+  new MutationObserver(function () { readTokens(); if (reduced) draw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  readTokens(); resize(); draw();
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { es[0].isIntersecting ? start() : stop(); }).observe(hero); else start();
+  document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); });
+})();
+</script>
